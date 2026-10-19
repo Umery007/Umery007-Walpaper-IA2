@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { generateLimiter } from "../middleware/rateLimit.js";
 import { generateWallpaperImage, titleFromPrompt } from "../services/gemini.js";
 import { getWallpaperById } from "../services/wallpapers.js";
+import { loadGeneratedImageForEditing } from "../services/imageEditing.js";
 import { chargeOneCredit, getAccountUsage, resolveGenerationCharge } from "../services/usage.js";
 import { asyncHandler, paymentRequired } from "../utils/http.js";
 import { parseBody } from "../utils/validate.js";
@@ -19,30 +20,21 @@ const generateSchema = z.object({
     .max(1000, "A descricao e longa demais. Resuma em ate 1000 caracteres."),
   category: z.string().trim().max(60).optional().default("IA"),
   tags: z.array(z.string().trim().min(1).max(30)).max(10).optional().default([]),
-  is_public: z.boolean().optional().default(true),
+  is_public: z.boolean().optional().default(false),
 });
 
-/**
- * POST /api/images/generate
- * Gera um wallpaper com o Gemini, salva o arquivo e registra na galeria.
- * A cobranca (cota mensal ou credito) so acontece se a imagem vier mesmo.
- */
-router.post("/generate", requireAuth, generateLimiter, asyncHandler(async (req, res) => {
-  const { prompt, category, tags, is_public: isPublic } = parseBody(generateSchema, req.body);
+const editSchema = z.object({
+  wallpaper_id: z.string().uuid("Escolha um wallpaper valido."),
+  prompt: generateSchema.shape.prompt,
+  category: generateSchema.shape.category,
+  tags: generateSchema.shape.tags,
+});
 
-  const charge = await resolveGenerationCharge(req.user);
-  if (!charge.allowed) {
-    throw paymentRequired(charge.reason);
-  }
-
-  // Se isto falhar, nada e gravado e o usuario nao perde credito.
-  const image = await generateWallpaperImage(prompt);
-
+async function storeGeneration({ user, charge, prompt, category, tags, isPublic, image }) {
   const wallpaperId = await transaction(async (client) => {
     if (charge.chargeCredit) {
-      const remaining = await chargeOneCredit(client, req.user.id, "image-generation");
+      const remaining = await chargeOneCredit(client, user.id, "image-generation");
       if (remaining === null) {
-        // Outro pedido simultaneo consumiu o ultimo credito.
         throw paymentRequired("Seus creditos acabaram. Compre mais para continuar gerando.");
       }
     }
@@ -51,42 +43,78 @@ router.post("/generate", requireAuth, generateLimiter, asyncHandler(async (req, 
       `INSERT INTO wallpapers (user_id, title, description, image_url, category, tags, source, prompt, is_public)
        VALUES ($1, $2, $3, $4, $5, $6, 'ai', $7, $8)
        RETURNING id`,
-      [
-        req.user.id,
-        titleFromPrompt(prompt),
-        prompt,
-        image.storedPath,
-        category,
-        tags,
-        prompt,
-        isPublic,
-      ],
+      [user.id, titleFromPrompt(prompt), prompt, image.storedPath, category, tags, prompt, isPublic],
     );
 
     await client.query(
       `INSERT INTO generations (user_id, wallpaper_id, prompt, model, charged_credit)
        VALUES ($1, $2, $3, $4, $5)`,
-      [req.user.id, rows[0].id, prompt, image.model, charge.chargeCredit],
+      [user.id, rows[0].id, prompt, image.model, charge.chargeCredit],
     );
 
     return rows[0].id;
   });
 
-  const wallpaper = await getWallpaperById(wallpaperId, req.user.id);
-  // Recarrega o saldo depois da possivel cobranca.
+  const wallpaper = await getWallpaperById(wallpaperId, user.id);
   const usage = await getAccountUsage({
-    ...req.user,
-    credits: charge.chargeCredit ? req.user.credits - 1 : req.user.credits,
+    ...user,
+    credits: charge.chargeCredit ? user.credits - 1 : user.credits,
+  });
+  return { wallpaper, usage };
+}
+
+/**
+ * POST /api/images/generate
+ * Gera um wallpaper com o Gemini, salva o arquivo e registra na galeria.
+ * A cobranca (cota mensal ou credito) so acontece se a imagem vier mesmo.
+ */
+router.post("/generate", requireAuth, generateLimiter, asyncHandler(async (req, res) => {
+  const { prompt, category, tags, is_public: isPublic } = parseBody(generateSchema, req.body);
+  const charge = await resolveGenerationCharge(req.user);
+  if (!charge.allowed) throw paymentRequired(charge.reason);
+  // Se isto falhar, nada e gravado e o usuario nao perde credito.
+  const image = await generateWallpaperImage(prompt);
+  const result = await storeGeneration({
+    user: req.user,
+    charge,
+    prompt,
+    category,
+    tags,
+    isPublic,
+    image,
   });
 
-  res.status(201).json({ wallpaper, usage });
+  res.status(201).json(result);
+}));
+
+/** Edita um wallpaper gerado pela IA sem perder o estilo/conteudo original. */
+router.post("/edit", requireAuth, generateLimiter, asyncHandler(async (req, res) => {
+  const { wallpaper_id: wallpaperId, prompt, category, tags } = parseBody(editSchema, req.body);
+  const sourceImage = await loadGeneratedImageForEditing(wallpaperId, req.user.id);
+  const charge = await resolveGenerationCharge(req.user);
+  if (!charge.allowed) throw paymentRequired(charge.reason);
+  const image = await generateWallpaperImage(prompt, { sourceImage });
+  const result = await storeGeneration({
+    user: req.user,
+    charge,
+    prompt,
+    category,
+    tags,
+    isPublic: false,
+    image,
+  });
+  res.status(201).json(result);
 }));
 
 /** Historico de geracoes do usuario. */
 router.get("/history", requireAuth, asyncHandler(async (req, res) => {
   const { rows } = await query(
     `SELECT g.id, g.prompt, g.model, g.charged_credit, g.created_at,
-            w.id AS wallpaper_id, w.image_url, w.title
+            w.id AS wallpaper_id, w.image_url, w.title,
+            EXISTS (
+              SELECT 1 FROM favorites f
+              WHERE f.wallpaper_id = w.id AND f.user_id = $1
+            ) AS favorited
      FROM generations g
      LEFT JOIN wallpapers w ON w.id = g.wallpaper_id
      WHERE g.user_id = $1

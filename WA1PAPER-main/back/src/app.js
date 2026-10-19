@@ -11,6 +11,9 @@ import favoriteRoutes from "./routes/favorites.js";
 import imageRoutes from "./routes/images.js";
 import userRoutes from "./routes/users.js";
 import wallpaperRoutes from "./routes/wallpapers.js";
+import folderRoutes from "./routes/folders.js";
+import { serveWallpaperImage } from "./middleware/wallpaperMedia.js";
+import { optionalAuth } from "./middleware/auth.js";
 
 export function createApp() {
   const app = express();
@@ -38,7 +41,10 @@ export function createApp() {
   app.use(cookieParser());
   if (!env.isProduction) app.use(morgan("dev"));
 
-  // Imagens geradas pela IA.
+  // Imagens geradas: verifica a visibilidade do wallpaper antes de servir.
+  app.get("/uploads/wallpapers/:filename", optionalAuth, serveWallpaperImage);
+
+  // Outros arquivos de upload (como avatares).
   app.use("/uploads", express.static(env.uploadsDir, {
     maxAge: "7d",
     fallthrough: true,
@@ -58,6 +64,7 @@ export function createApp() {
   app.use("/api/users", userRoutes);
   app.use("/api/wallpapers", wallpaperRoutes);
   app.use("/api/favorites", favoriteRoutes);
+  app.use("/api/folders", folderRoutes);
   app.use("/api/images", imageRoutes);
   app.use("/api/billing", billingRoutes);
 

@@ -70,4 +70,13 @@ export function buildQuery(params) {
   return text ? `?${text}` : "";
 }
 
+export function isProtectedWallpaperImage(url) {
+  if (!url) return false;
+  try {
+    return /^\/api\/wallpapers\/[^/]+\/image$/.test(new URL(url, "http://localhost").pathname);
+  } catch {
+    return false;
+  }
+}
+
 export { API_BASE };

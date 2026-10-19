@@ -2,7 +2,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import wallpaper from "../../assets/img-cards/paper.jpeg";
+import { apiRequest, isProtectedWallpaperImage } from "../../services/api";
+import useAuth from "../../contexts/useAuth";
 import {
 	BackButton,
 	DownloadedPage,
@@ -17,15 +18,28 @@ import {
 	GalleryButton,
 } from "./styles";
 
-const wallpapers = Array.from({ length: 120 }, (_, index) => ({
-	id: index + 1,
-	position: `${(index * 17) % 100}% ${(index * 29) % 100}%`,
-}));
-
 export default function Baixados() {
 	const navigate = useNavigate();
+	const { user, loading: loadingUser } = useAuth();
+	const [result, setResult] = useState({ userId: null, wallpapers: [], error: "" });
 	const [page, setPage] = useState(0);
 	const [pageSize, setPageSize] = useState(getPageSize);
+
+	useEffect(() => {
+		if (loadingUser || !user) return undefined;
+
+		let active = true;
+		setPage(0);
+		apiRequest("/wallpapers/downloads")
+			.then((data) => {
+				if (active) setResult({ userId: user.id, wallpapers: data.wallpapers, error: "" });
+			})
+			.catch((error) => {
+				if (active) setResult({ userId: user.id, wallpapers: [], error: error.message });
+			});
+
+		return () => { active = false; };
+	}, [loadingUser, user]);
 
 	useEffect(() => {
 		function updatePageSize() {
@@ -37,6 +51,7 @@ export default function Baixados() {
 		return () => window.removeEventListener("resize", updatePageSize);
 	}, []);
 
+	const wallpapers = result.userId === user?.id ? result.wallpapers : [];
 	const pages = Array.from({ length: Math.ceil(wallpapers.length / pageSize) }, (_, index) =>
 		wallpapers.slice(index * pageSize, (index + 1) * pageSize),
 	);
@@ -60,10 +75,10 @@ export default function Baixados() {
 			</Header>
 
 			<DownloadedPanel>
-				<CountLabel>365 Pins Baixados</CountLabel>
-				<PageIndicator>
-					Página {page + 1} de {pages.length}
-				</PageIndicator>
+				<CountLabel>{wallpapers.length} Wallpapers Baixados</CountLabel>
+				{wallpapers.length > 0 && (
+					<PageIndicator>Página {page + 1} de {pages.length}</PageIndicator>
+				)}
 
 					{hasMultiplePages && (
 						<GalleryButton type="button" aria-label="Página anterior" $side="left" onClick={showPreviousPage} disabled={page === 0}>
@@ -71,25 +86,39 @@ export default function Baixados() {
 						</GalleryButton>
 					)}
 
+				{loadingUser || (user && result.userId !== user.id) ? (
+					<p role="status">Carregando seus downloads...</p>
+				) : !user ? (
+					<p>Entre na sua conta para ver os wallpapers baixados.</p>
+				) : result.error ? (
+					<p role="alert">{result.error}</p>
+				) : wallpapers.length === 0 ? (
+					<p>Você ainda não baixou nenhum wallpaper.</p>
+				) : (
 				<WallpaperGrid key={page}>
-					{pages[page].map(({ id, position }) => (
+					{(pages[page] ?? []).map((wallpaper) => (
 						<WallpaperCard
-							key={id}
+							key={wallpaper.id}
 							role="link"
 							tabIndex={0}
-							aria-label={`Abrir wallpaper baixado ${id}`}
-							onClick={() => navigate("/pin")}
+							aria-label={`Abrir wallpaper baixado ${wallpaper.title}`}
+							onClick={() => navigate("/pin", { state: { wallpaper } })}
 							onKeyDown={(event) => {
 								if (event.key === "Enter" || event.key === " ") {
 									event.preventDefault();
-									navigate("/pin");
+									navigate("/pin", { state: { wallpaper } });
 								}
 							}}
 						>
-							<WallpaperImage src={wallpaper} alt={`Wallpaper baixado ${id}`} style={{ objectPosition: position }} />
+							<WallpaperImage
+								src={wallpaper.image_url}
+								alt={wallpaper.title}
+								crossOrigin={isProtectedWallpaperImage(wallpaper.image_url) ? "use-credentials" : undefined}
+							/>
 						</WallpaperCard>
 					))}
 				</WallpaperGrid>
+				)}
 
 				{hasMultiplePages && (
 					<GalleryButton type="button" aria-label="Próxima página" $side="right" onClick={showNextPage} disabled={page === pages.length - 1}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronDown, Crown, Lock, X } from "lucide-react";
 import { applyThemeColor, DEFAULT_THEME_COLOR } from "../../utils/theme";
+import useAuth from "../../contexts/useAuth";
 import {
   Category,
   CategoryToggle,
@@ -125,8 +126,10 @@ const colorGroups = [
 const allColors = colorGroups.flatMap((group) => group.colors);
 
 export default function Tema({ isVip = false, onClose, onUpgrade }) {
+  const { user } = useAuth();
+  const themeKey = `wa1paper-primary-color:${user?.id ?? "guest"}`;
   const [selectedColor, setSelectedColor] = useState(() => {
-    const savedColor = window.localStorage.getItem("wa1paper-primary-color");
+    const savedColor = window.localStorage.getItem(themeKey);
     return allColors.find((color) => color.value === savedColor)?.value ?? DEFAULT_THEME_COLOR;
   });
   const [expandedGroup, setExpandedGroup] = useState(null);
@@ -134,6 +137,11 @@ export default function Tema({ isVip = false, onClose, onUpgrade }) {
   useEffect(() => {
     applyThemeColor(selectedColor);
   }, [selectedColor]);
+
+  useEffect(() => {
+    const savedColor = window.localStorage.getItem(themeKey);
+    setSelectedColor(allColors.find((color) => color.value === savedColor)?.value ?? DEFAULT_THEME_COLOR);
+  }, [themeKey]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -148,13 +156,13 @@ export default function Tema({ isVip = false, onClose, onUpgrade }) {
     if (!isVip) return;
 
     applyThemeColor(color.value);
-    window.localStorage.setItem("wa1paper-primary-color", color.value);
+    window.localStorage.setItem(themeKey, color.value);
     setSelectedColor(color.value);
   }
 
   function handleSelectNormal() {
     applyThemeColor(DEFAULT_THEME_COLOR);
-    window.localStorage.removeItem("wa1paper-primary-color");
+    window.localStorage.removeItem(themeKey);
     setSelectedColor(DEFAULT_THEME_COLOR);
   }
 

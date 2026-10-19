@@ -62,7 +62,7 @@ function resolveLocalPath(imageUrl) {
 }
 
 /** Envia um arquivo que esta no disco. */
-async function streamFromDisk(caminho, titulo, res) {
+async function streamFromDisk(caminho, titulo, res, inline) {
   let info;
   try {
     info = await stat(caminho);
@@ -75,14 +75,14 @@ async function streamFromDisk(caminho, titulo, res) {
 
   res.setHeader("Content-Type", tipo);
   res.setHeader("Content-Length", info.size);
-  res.setHeader("Content-Disposition", `attachment; filename="${buildFileName(titulo, extensao)}"`);
+  res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${buildFileName(titulo, extensao)}"`);
   res.setHeader("Cache-Control", "private, max-age=3600");
 
   await pipeline(createReadStream(caminho), res);
 }
 
 /** Busca uma imagem externa e repassa como download. */
-async function streamFromRemote(imageUrl, titulo, res) {
+async function streamFromRemote(imageUrl, titulo, res, inline) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -108,7 +108,7 @@ async function streamFromRemote(imageUrl, titulo, res) {
 
   res.setHeader("Content-Type", tipo);
   if (tamanho) res.setHeader("Content-Length", tamanho);
-  res.setHeader("Content-Disposition", `attachment; filename="${buildFileName(titulo, extensao)}"`);
+  res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${buildFileName(titulo, extensao)}"`);
 
   try {
     await pipeline(Readable.fromWeb(resposta.body), res);
@@ -118,13 +118,13 @@ async function streamFromRemote(imageUrl, titulo, res) {
 }
 
 /** Ponto de entrada: decide entre disco e rede. */
-export async function streamWallpaperFile(wallpaper, res) {
+export async function streamWallpaperFile(wallpaper, res, { inline = false } = {}) {
   const imageUrl = wallpaper.image_url;
   if (!imageUrl) throw notFound("Este wallpaper nao tem imagem.");
 
   const caminhoLocal = resolveLocalPath(imageUrl);
   if (caminhoLocal) {
-    await streamFromDisk(caminhoLocal, wallpaper.title, res);
+    await streamFromDisk(caminhoLocal, wallpaper.title, res, inline);
     return;
   }
 
@@ -133,5 +133,5 @@ export async function streamWallpaperFile(wallpaper, res) {
     throw new HttpError(422, "O endereco da imagem deste wallpaper e invalido.");
   }
 
-  await streamFromRemote(imageUrl, wallpaper.title, res);
+  await streamFromRemote(imageUrl, wallpaper.title, res, inline);
 }

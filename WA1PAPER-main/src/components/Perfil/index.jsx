@@ -13,23 +13,21 @@ import { readSavedWallpaperFolders, writeSavedWallpaperFolders } from '../../uti
 import * as S from './styles';
 import useAuth from '../../contexts/useAuth';
 
-const PROFILE_STORAGE_KEY = 'wa1paper-profile';
-const PROFILE_VIEWS_STORAGE_KEY = 'wa1paper-profile-views';
 const DEFAULT_PROFILE = { name: '', username: '', isPrivate: false };
 
-function carregarPerfilLocal() {
+function carregarPerfilLocal(ownerId) {
   try {
-    const savedProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    const savedProfile = window.localStorage.getItem(`wa1paper-profile:${ownerId ?? 'guest'}`);
     return savedProfile ? { ...DEFAULT_PROFILE, ...JSON.parse(savedProfile) } : DEFAULT_PROFILE;
   } catch (error) {
     return { ...DEFAULT_PROFILE, storageError: error.message };
   }
 }
 
-function carregarVisualizacoesPerfil() {
+function carregarVisualizacoesPerfil(ownerId) {
   try {
     return {
-      count: Number(window.localStorage.getItem(PROFILE_VIEWS_STORAGE_KEY)) || 0,
+      count: Number(window.localStorage.getItem(`wa1paper-profile-views:${ownerId ?? 'guest'}`)) || 0,
       error: '',
     };
   } catch (error) {
@@ -40,9 +38,9 @@ function carregarVisualizacoesPerfil() {
   }
 }
 
-function carregarPastasSalvas() {
+function carregarPastasSalvas(ownerId) {
   try {
-    return { pastas: readSavedWallpaperFolders(), erro: '' };
+    return { pastas: readSavedWallpaperFolders(ownerId), erro: '' };
   } catch (error) {
     return {
       pastas: [],
@@ -68,8 +66,9 @@ export default function Perfil({
 
   const [abaAtiva, setAbaAtiva] = useState('pastas');
   const [salvosAmpliado, setSalvosAmpliado] = useState(salvosAmpliadoInicial);
-  const [pastasState] = useState(carregarPastasSalvas);
+  const [pastasState] = useState(() => carregarPastasSalvas(null));
   const [pastasSalvas, setPastasSalvas] = useState(pastasState.pastas);
+  const [pastasOwner, setPastasOwner] = useState(null);
   const [erroPastas, setErroPastas] = useState(pastasState.erro);
   const [criandoPasta, setCriandoPasta] = useState(false);
   const [nomeNovaPasta, setNomeNovaPasta] = useState('');
@@ -81,28 +80,59 @@ export default function Perfil({
   const [salvandoPasta, setSalvandoPasta] = useState(false);
   const [pastaParaExcluir, setPastaParaExcluir] = useState(null);
   const [editandoPerfil, setEditandoPerfil] = useState(false);
-  const [perfilLocal, setPerfilLocal] = useState(carregarPerfilLocal);
+  const [perfilLocal, setPerfilLocal] = useState(() => carregarPerfilLocal(null));
   const [nomeEditado, setNomeEditado] = useState('');
   const [nomeUsuarioEditado, setNomeUsuarioEditado] = useState('');
   const [contaPrivadaEditada, setContaPrivadaEditada] = useState(false);
-  const [visualizacoesIniciais] = useState(carregarVisualizacoesPerfil);
+  const [visualizacoesIniciais, setVisualizacoesIniciais] = useState(() => carregarVisualizacoesPerfil(null));
   const [erroPerfil, setErroPerfil] = useState(perfilLocal.storageError || '');
+  const [mensagemVerificacao, setMensagemVerificacao] = useState('');
+  const [enviandoVerificacao, setEnviandoVerificacao] = useState(false);
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const visualizacaoRegistrada = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateProfile, refreshUser } = useAuth();
+  const ownerId = user?.id ?? null;
+
+  useEffect(() => {
+    const localProfile = carregarPerfilLocal(ownerId);
+    const savedFolders = carregarPastasSalvas(ownerId);
+    setPerfilLocal(localProfile);
+    setPastasOwner(ownerId);
+    setPastasSalvas(ownerId ? [] : savedFolders.pastas);
+    setErroPastas(savedFolders.erro);
+    setErroPerfil(localProfile.storageError || '');
+    setVisualizacoesIniciais(carregarVisualizacoesPerfil(ownerId));
+    setPastaParaExcluir(null);
+    setCriandoPasta(false);
+    setItensNovaPasta([]);
+    if (!ownerId) return undefined;
+
+    let active = true;
+    apiRequest('/folders')
+      .then((data) => {
+        if (active) {
+          setPastasSalvas(data.folders);
+          setErroPastas('');
+        }
+      })
+      .catch((error) => {
+        if (active) setErroPastas(error.message || 'Não foi possível carregar suas pastas.');
+      });
+    return () => { active = false; };
+  }, [ownerId]);
 
   useEffect(() => {
     if (mostrarSalvos || visualizacaoRegistrada.current) return;
     visualizacaoRegistrada.current = true;
-    const novasVisualizacoes = carregarVisualizacoesPerfil().count + 1;
+    const novasVisualizacoes = carregarVisualizacoesPerfil(ownerId).count + 1;
     try {
-      window.localStorage.setItem(PROFILE_VIEWS_STORAGE_KEY, String(novasVisualizacoes));
+      window.localStorage.setItem(`wa1paper-profile-views:${ownerId ?? 'guest'}`, String(novasVisualizacoes));
     } catch (error) {
       console.error('Não foi possível salvar as visualizações do perfil.', error);
     }
-  }, [mostrarSalvos]);
+  }, [mostrarSalvos, ownerId]);
 
   useEffect(() => () => {
     if (previewCapa) URL.revokeObjectURL(previewCapa);
@@ -130,7 +160,7 @@ export default function Perfil({
         isPrivate: contaPrivadaEditada,
       };
       if (user) await updateProfile(profile);
-      window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      window.localStorage.setItem(`wa1paper-profile:${ownerId ?? 'guest'}`, JSON.stringify(profile));
       setPerfilLocal(profile);
       setEditandoPerfil(false);
     } catch (error) {
@@ -176,6 +206,19 @@ export default function Perfil({
     }
   }
 
+  async function reenviarVerificacao() {
+    setEnviandoVerificacao(true);
+    setMensagemVerificacao('');
+    try {
+      const result = await apiRequest('/auth/verify-email/resend', { method: 'POST' });
+      setMensagemVerificacao(result.message);
+    } catch (error) {
+      setMensagemVerificacao(error.message || 'Não foi possível enviar o link de verificação.');
+    } finally {
+      setEnviandoVerificacao(false);
+    }
+  }
+
   async function criarPasta(event) {
     event.preventDefault();
     const nome = nomeNovaPasta.trim();
@@ -187,8 +230,8 @@ export default function Perfil({
     try {
       let coverImage = '';
       if (capaNovaPasta) {
-        if (capaNovaPasta.size > 1024 * 1024) {
-          throw new Error('A capa de uma pasta deve ter no máximo 1 MB.');
+        if (capaNovaPasta.size > 700 * 1024) {
+          throw new Error('A capa de uma pasta deve ter no máximo 700 KB.');
         }
         coverImage = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -198,18 +241,36 @@ export default function Perfil({
         });
       }
 
-      let novaPasta = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: nome,
-        visibility: visibilidadeNovaPasta,
-        // Sem capa escolhida, o primeiro wallpaper vira a capa.
-        coverImage: coverImage || itensNovaPasta[0]?.image || '',
-        items: itensNovaPasta,
-      };
-
-      const novasPastas = [...pastasSalvas, novaPasta];
-      setPastasSalvas(novasPastas);
-      writeSavedWallpaperFolders(novasPastas);
+      let novaPasta;
+      const cover = coverImage;
+      if (user) {
+        const { folder } = await apiRequest('/folders', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: nome,
+            visibility: visibilidadeNovaPasta,
+            cover_image: cover,
+            wallpaper_ids: itensNovaPasta.map((item) => item.id),
+          }),
+        });
+        novaPasta = folder;
+        setPastasOwner(ownerId);
+        setPastasSalvas((current) => [
+          ...(pastasOwner === ownerId ? current : []),
+          novaPasta,
+        ]);
+      } else {
+        novaPasta = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name: nome,
+          visibility: visibilidadeNovaPasta,
+          coverImage: cover,
+          items: itensNovaPasta,
+        };
+        const novasPastas = [...pastasSalvas, novaPasta];
+        setPastasSalvas(novasPastas);
+        writeSavedWallpaperFolders(novasPastas);
+      }
       setErroPastas('');
       setNomeNovaPasta('');
       setCapaNovaPasta(null);
@@ -226,8 +287,16 @@ export default function Perfil({
   async function confirmarExclusaoPasta() {
     if (!pastaParaExcluir) return;
     const pasta = pastaParaExcluir;
+    if (user) {
+      try {
+        await apiRequest(`/folders/${encodeURIComponent(pasta.id)}`, { method: 'DELETE' });
+      } catch (error) {
+        setErroPastas(error.message || 'Não foi possível excluir a pasta.');
+        return;
+      }
+    }
     const novasPastas = pastasSalvas.filter((item) => item.id !== pasta.id);
-    writeSavedWallpaperFolders(novasPastas);
+    if (!user) writeSavedWallpaperFolders(novasPastas);
     setPastasSalvas(novasPastas);
     setErroPastas('');
     setPastaParaExcluir(null);
@@ -235,7 +304,7 @@ export default function Perfil({
 
   const pastasExibidas = [
     ...dadosPastas,
-    ...pastasSalvas.map((pasta) => ({
+    ...(pastasOwner === ownerId ? pastasSalvas : []).map((pasta) => ({
       id: pasta.id,
       titulo: pasta.name,
       quantidadeItens: pasta.items.length,
@@ -252,7 +321,7 @@ export default function Perfil({
     : { followers_count: 0, following_count: 0 };
 
   const pastaSelecionada = location.state?.folderId
-    ? pastasSalvas.find((pasta) => pasta.id === location.state.folderId)
+    ? (pastasOwner === ownerId ? pastasSalvas : []).find((pasta) => pasta.id === location.state.folderId)
     : null;
   const imagensDaPasta = pastaSelecionada
     ? pastaSelecionada.items.map((item) => ({
@@ -300,8 +369,11 @@ export default function Perfil({
           <S.DetalhesUsuario>
             <S.CabecalhoUsuario>
               <div>
-                <S.NomeUsuario>{user?.name || perfilLocal.name || 'Seu perfil'}</S.NomeUsuario>
-                {(user?.username || perfilLocal.username) && (
+                <S.NomeUsuario>
+                  {user ? user.name : perfilLocal.name || 'Seu perfil'}
+                  {user?.plan === 'premium' && <S.SeloPremium>Premium</S.SeloPremium>}
+                </S.NomeUsuario>
+                {((user && user.username) || (!user && perfilLocal.username)) && (
                   <S.NomeUsuarioHandle>@{(user?.username || perfilLocal.username).replace(/^@/, '')}</S.NomeUsuarioHandle>
                 )}
               </div>
@@ -332,6 +404,15 @@ export default function Perfil({
             <S.BioUsuario>
               {user?.email || (perfilLocal.isPrivate ? 'Conta privada' : 'Conta pública')}
             </S.BioUsuario>
+            {user && !user.isEmailVerified && (
+              <S.VerificacaoEmail>
+                <span>Confirme seu e-mail para liberar os benefícios vinculados à conta.</span>
+                <button type="button" onClick={reenviarVerificacao} disabled={enviandoVerificacao}>
+                  {enviandoVerificacao ? 'Enviando...' : 'Reenviar link'}
+                </button>
+                {mensagemVerificacao && <small role="status">{mensagemVerificacao}</small>}
+              </S.VerificacaoEmail>
+            )}
             <S.VisualizacoesPerfil>
               {visualizacoesIniciais.count + (mostrarSalvos ? 0 : 1)} visualizações do perfil neste dispositivo
             </S.VisualizacoesPerfil>

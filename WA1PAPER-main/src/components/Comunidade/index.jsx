@@ -36,7 +36,8 @@ import {
   PublicFolderThumb,
   PublicFolderCount,
 } from "./styles";
-import { readSavedWallpaperFolders } from "../../utils/savedWallpapers";
+import useAuth from "../../contexts/useAuth";
+import { apiRequest, isProtectedWallpaperImage } from "../../services/api";
 
 const communities = [
   {
@@ -70,27 +71,24 @@ const communities = [
 ];
 
 export default function Comunidade() {
+  const { user } = useAuth();
   const [publicFolders, setPublicFolders] = useState([]);
   const [foldersError, setFoldersError] = useState("");
 
   useEffect(() => {
-    function loadPublicFolders() {
-      try {
-        setPublicFolders(readSavedWallpaperFolders().filter((folder) => folder.visibility === "public"));
-        setFoldersError("");
-      } catch (error) {
-        setFoldersError(error.message || "Não foi possível carregar as pastas salvas.");
-      }
-    }
-
-    loadPublicFolders();
-    window.addEventListener("wa1paper-saved-folders-updated", loadPublicFolders);
-    window.addEventListener("storage", loadPublicFolders);
-    return () => {
-      window.removeEventListener("wa1paper-saved-folders-updated", loadPublicFolders);
-      window.removeEventListener("storage", loadPublicFolders);
-    };
-  }, []);
+    let active = true;
+    apiRequest("/folders?visibility=public")
+      .then((data) => {
+        if (active) {
+          setPublicFolders(data.folders);
+          setFoldersError("");
+        }
+      })
+      .catch((error) => {
+        if (active) setFoldersError(error.message || "Não foi possível carregar as pastas públicas.");
+      });
+    return () => { active = false; };
+  }, [user?.id]);
 
   return (
     <Container>
@@ -130,7 +128,7 @@ export default function Comunidade() {
               <PublicFoldersTitle>Pastas públicas</PublicFoldersTitle>
             </div>
             <PublicFoldersDescription>
-              Pastas que você marcou como públicas neste navegador.
+              Pastas públicas compartilhadas pelos usuários do WA1PAPER.
             </PublicFoldersDescription>
           </PublicFoldersHeading>
           {foldersError ? (
@@ -145,16 +143,27 @@ export default function Comunidade() {
                 return (
                   <PublicFolderCard key={folder.id}>
                     {cover ? (
-                      <PublicFolderCover src={cover} alt={`Capa da pasta ${folder.name}`} />
+                      <PublicFolderCover
+                        src={cover}
+                        alt={`Capa da pasta ${folder.name}`}
+                        crossOrigin={isProtectedWallpaperImage(cover) ? "use-credentials" : undefined}
+                      />
                     ) : (
                       <PublicFolderCoverFallback aria-hidden="true">W</PublicFolderCoverFallback>
                     )}
                     <PublicFolderDetails>
                       <PublicFolderName>{folder.name}</PublicFolderName>
-                      <PublicFolderCreator>Visível neste navegador</PublicFolderCreator>
+                      <PublicFolderCreator>
+                        {folder.creator_name ? `Por ${folder.creator_name}` : "Criada pela comunidade"}
+                      </PublicFolderCreator>
                       <PublicFolderThumbs>
                         {items.slice(0, 4).map((item) => (
-                          <PublicFolderThumb key={item.id} src={item.image} alt={item.title || "Wallpaper"} />
+                          <PublicFolderThumb
+                            key={item.id}
+                            src={item.image}
+                            alt={item.title || "Wallpaper"}
+                            crossOrigin={isProtectedWallpaperImage(item.image) ? "use-credentials" : undefined}
+                          />
                         ))}
                         <PublicFolderCount>{items.length} wallpapers</PublicFolderCount>
                       </PublicFolderThumbs>

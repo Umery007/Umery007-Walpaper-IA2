@@ -31,7 +31,18 @@ const MIME_EXTENSIONS = {
 };
 
 /** Dá ao modelo um enquadramento de wallpaper sem descartar o pedido do usuario. */
-function buildPrompt(userPrompt) {
+function buildPrompt(userPrompt, isEdit) {
+  if (isEdit) {
+    return [
+      "Edit the provided image according to the user's request.",
+      "Preserve the original subject, characters, composition, and art style unless the user explicitly asks to change them.",
+      "Do not turn an illustration into a photograph or replace its subject with a different scene.",
+      "Make only the requested changes and keep the result suitable as a wallpaper.",
+      "",
+      `User request: ${userPrompt}`,
+    ].join("\n");
+  }
+
   return [
     "Generate a high-quality vertical mobile wallpaper image.",
     "Composition: clean, striking, suitable as a phone background,",
@@ -92,7 +103,7 @@ function translateApiError(status, payload) {
  * Gera uma imagem com o Gemini e salva em back/uploads/wallpapers.
  * Devolve { imageUrl, relativePath, model, mimeType }.
  */
-export async function generateWallpaperImage(userPrompt) {
+export async function generateWallpaperImage(userPrompt, { sourceImage } = {}) {
   if (!env.geminiApiKey) {
     throw new HttpError(
       503,
@@ -117,7 +128,15 @@ export async function generateWallpaperImage(userPrompt) {
         "x-goog-api-key": env.geminiApiKey,
       },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: buildPrompt(userPrompt) }] }],
+        contents: [{
+          role: "user",
+          parts: [
+            ...(sourceImage
+              ? [{ inlineData: { mimeType: sourceImage.mimeType, data: sourceImage.data } }]
+              : []),
+            { text: buildPrompt(userPrompt, Boolean(sourceImage)) },
+          ],
+        }],
         // O Vertex recusa IMAGE sozinho; o AI Studio aceita os dois formatos.
         generationConfig: {
           responseModalities: ["TEXT", "IMAGE"],

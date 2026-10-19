@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { query } from "../db/pool.js";
+import { query, transaction } from "../db/pool.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import {
   getWallpaperById,
@@ -52,6 +52,29 @@ router.get("/mine", requireAuth, asyncHandler(async (req, res) => {
   res.json({ wallpapers });
 }));
 
+/** Historico de downloads da conta autenticada. */
+router.get("/downloads", requireAuth, asyncHandler(async (req, res) => {
+  const { rows } = await query(
+    `SELECT w.id, w.user_id, w.title, w.description, w.image_url, w.category, w.tags,
+            w.source, w.prompt, w.downloads, w.created_at,
+            u.name AS creator_name, u.username AS creator_username,
+            EXISTS (
+              SELECT 1 FROM favorites f
+              WHERE f.wallpaper_id = w.id AND f.user_id = $1
+            ) AS favorited,
+            (SELECT COUNT(*)::int FROM favorites f WHERE f.wallpaper_id = w.id) AS favorites_count
+     FROM downloads d
+     JOIN wallpapers w ON w.id = d.wallpaper_id
+     LEFT JOIN users u ON u.id = w.user_id
+     WHERE d.user_id = $1
+       AND (w.is_public = TRUE OR w.user_id = $1)
+     ORDER BY d.created_at DESC
+     LIMIT 120`,
+    [req.user.id],
+  );
+  res.json({ wallpapers: rows.map(serializeWallpaper) });
+}));
+
 const createSchema = z.object({
   title: z.string().trim().min(2, "Informe um titulo.").max(120, "O titulo e longo demais."),
   description: z.string().trim().max(1000, "A descricao e longa demais.").optional().default(""),
@@ -91,31 +114,49 @@ router.get("/:id", optionalAuth, asyncHandler(async (req, res) => {
  * e a extensao certos.
  */
 router.get("/:id/download", optionalAuth, asyncHandler(async (req, res) => {
-  const wallpaper = await getWallpaperById(req.params.id, req.user?.id ?? null);
+  const { rows } = await query(
+    `SELECT id, user_id, title, image_url
+     FROM wallpapers
+     WHERE id = $1 AND (is_public = TRUE OR user_id = $2)`,
+    [req.params.id, req.user?.id ?? null],
+  );
+  const wallpaper = rows[0];
   if (!wallpaper) throw notFound("Este wallpaper nao existe ou foi removido.");
 
+  await transaction(async (client) => {
+    await client.query("UPDATE wallpapers SET downloads = downloads + 1 WHERE id = $1", [wallpaper.id]);
+    if (req.user) {
+      await client.query(
+        "INSERT INTO downloads (user_id, wallpaper_id) VALUES ($1, $2)",
+        [req.user.id, wallpaper.id],
+      );
+    }
+  });
   await streamWallpaperFile(wallpaper, res);
+}));
 
-  // Contabiliza, sem travar a entrega se falhar.
-  query("UPDATE wallpapers SET downloads = downloads + 1 WHERE id = $1", [wallpaper.id])
-    .catch(() => {});
-  if (req.user) {
-    query("INSERT INTO downloads (user_id, wallpaper_id) VALUES ($1, $2)", [req.user.id, wallpaper.id])
-      .catch(() => {});
-  }
+/** Serve a imagem inline após validar que ela é pública ou pertence à sessão. */
+router.get("/:id/image", optionalAuth, asyncHandler(async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, user_id, title, image_url
+     FROM wallpapers
+     WHERE id = $1 AND (is_public = TRUE OR user_id = $2)`,
+    [req.params.id, req.user?.id ?? null],
+  );
+  const wallpaper = rows[0];
+  if (!wallpaper) throw notFound("Este wallpaper nao existe ou foi removido.");
+  await streamWallpaperFile(wallpaper, res, { inline: true });
 }));
 
 /** Registra um download (alimenta a tela /baixados). */
 router.post("/:id/download", requireAuth, asyncHandler(async (req, res) => {
-  const { rows } = await query(
-    "UPDATE wallpapers SET downloads = downloads + 1 WHERE id = $1 RETURNING id",
-    [req.params.id],
-  );
-  if (!rows[0]) throw notFound("Este wallpaper nao existe ou foi removido.");
+  const wallpaper = await getWallpaperById(req.params.id, req.user.id);
+  if (!wallpaper) throw notFound("Este wallpaper nao existe ou foi removido.");
 
+  await query("UPDATE wallpapers SET downloads = downloads + 1 WHERE id = $1", [req.params.id]);
   await query(
     "INSERT INTO downloads (user_id, wallpaper_id) VALUES ($1, $2)",
-    [req.user.id, req.params.id],
+    [req.user.id, wallpaper.id],
   );
   res.json({ message: "Download registrado." });
 }));

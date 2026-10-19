@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import wallpaper from "../../assets/img-cards/paper.jpeg";
 import useAuth from "../../contexts/useAuth";
-import { apiRequest } from "../../services/api";
+import { apiRequest, isProtectedWallpaperImage } from "../../services/api";
 import {
   ActionButton,
   ActionRow,
@@ -256,6 +256,7 @@ export default function Pin() {
             <FeaturedImageWrap>
               <FeaturedImage
                 src={imageUrl}
+                crossOrigin={isProtectedWallpaperImage(imageUrl) ? "use-credentials" : undefined}
                 onLoad={(event) => setResolucao({
                   largura: event.target.naturalWidth,
                   altura: event.target.naturalHeight,

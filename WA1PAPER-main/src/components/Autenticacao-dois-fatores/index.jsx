@@ -81,7 +81,7 @@ export default function AutenticacaoDoisFatores() {
   return (
     <S.Wrapper
       style={{
-        backgroundImage: `url(${fundo})`,
+        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.72)), url(${fundo})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}

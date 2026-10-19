@@ -121,6 +121,8 @@ guardar no `localStorage`.
 | `POST` | `/auth/login` | Entra. `{ email, password }` |
 | `POST` | `/auth/logout` | Encerra a sessão. |
 | `GET` | `/auth/me` | Usuário da sessão (ou `null`). |
+| `POST` | `/auth/verify-email` | `{ token }` — confirma o e-mail e atualiza os privilégios elegíveis. |
+| `POST` | `/auth/verify-email/resend` | Reenvia o link para a sessão autenticada. |
 | `POST` | `/auth/change-password` | `{ current_password, new_password }` |
 | `POST` | `/auth/forgot-password` | `{ email }` — envia o link de recuperação. |
 | `POST` | `/auth/reset-password` | `{ token, password }` |
@@ -139,6 +141,7 @@ guardar no `localStorage`.
 | `GET` | `/wallpapers` | Lista pública. Aceita `search`, `category`, `limit`, `offset`. |
 | `GET` | `/wallpapers/categories` | Categorias com a contagem de cada uma. |
 | `GET` | `/wallpapers/mine` | Wallpapers do usuário logado. |
+| `GET` | `/wallpapers/downloads` | Histórico de downloads da conta autenticada. |
 | `GET` | `/wallpapers/:id` | Um wallpaper. |
 | `POST` | `/wallpapers` | Publica. `{ title, description, image_url, category, tags[] }` |
 | `POST` | `/wallpapers/:id/download` | Registra um download. |
@@ -152,11 +155,22 @@ guardar no `localStorage`.
 | `POST` | `/favorites/:wallpaperId` | Favorita. |
 | `DELETE` | `/favorites/:wallpaperId` | Desfavorita. |
 
+### Pastas
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/folders` | Pastas da conta autenticada; visitantes recebem apenas pastas públicas. |
+| `GET` | `/folders?visibility=public` | Pastas públicas da comunidade. |
+| `POST` | `/folders` | Cria uma pasta privada ou pública e associa wallpapers acessíveis. |
+| `POST` | `/folders/:folderId/items` | Adiciona um wallpaper acessível a uma pasta própria. |
+| `DELETE` | `/folders/:folderId` | Remove uma pasta própria. |
+
 ### Geração por IA
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `POST` | `/images/generate` | `{ prompt, category?, tags?, is_public? }` → gera, salva e publica. |
+| `POST` | `/images/generate` | `{ prompt, category?, tags?, is_public? }` → gera e salva; privado por padrão. |
+| `POST` | `/images/edit` | `{ wallpaper_id, prompt, category?, tags? }` → edita um wallpaper próprio/acessível gerado pela IA, preservando o original. |
 | `GET` | `/images/history` | Histórico de gerações. |
 
 ### Cobrança
@@ -199,6 +213,13 @@ cobrado e nada é gravado.
   para não revelar quem tem conta.
 - Tokens de recuperação são guardados como **hash**, valem 1 hora e só podem
   ser usados uma vez.
+- A confirmação de e-mail é necessária para conceder o benefício Premium
+  exclusivo; em desenvolvimento, o link de confirmação é mostrado no terminal
+  da API, assim como os e-mails de recuperação.
+- Wallpapers gerados são privados por padrão. A API verifica a permissão
+  também ao consultar, favoritar, editar, baixar ou servir o arquivo direto.
+- Pastas e itens são associados ao usuário autenticado no PostgreSQL; nomes,
+  ids enviados pelo frontend e o `localStorage` não concedem acesso.
 - `POST /wallpapers` exige **HTTPS** e recusa endereços internos
   (`localhost`, `10.x`, `192.168.x`, `.local`…), bloqueando SSRF.
 - Consultas sempre parametrizadas — sem concatenação de SQL.

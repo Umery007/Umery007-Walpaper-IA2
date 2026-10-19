@@ -44,6 +44,10 @@ export const PromptInput = styled.input`
     color: rgba(255, 255, 255, 0.48);
     opacity: 1;
   }
+
+  &:disabled {
+    opacity: 0.6;
+  }
 `;
 
 export const PromptSide = styled.div`
@@ -75,6 +79,11 @@ export const ActionButton = styled.button`
   &:hover {
     background: rgba(255, 255, 255, 0.2);
     color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 

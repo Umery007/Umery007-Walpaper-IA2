@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createGlobalStyle } from "styled-components";
 import { applyThemeColor, DEFAULT_THEME_COLOR } from "../utils/theme";
+import useAuth from "../contexts/useAuth";
 
 const GlobalStyle = createGlobalStyle`
   :root {
@@ -81,10 +82,12 @@ const GlobalStyle = createGlobalStyle`
 `;
 
 function GlobalStyles() {
+  const { user } = useAuth();
+
   useEffect(() => {
-    const savedColor = window.localStorage.getItem("wa1paper-primary-color");
-    if (savedColor) applyThemeColor(savedColor);
-  }, []);
+    const savedColor = window.localStorage.getItem(`wa1paper-primary-color:${user?.id ?? "guest"}`);
+    applyThemeColor(savedColor ?? DEFAULT_THEME_COLOR);
+  }, [user?.id]);
 
   return <GlobalStyle />;
 }

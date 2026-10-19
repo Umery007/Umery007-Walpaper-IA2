@@ -6,6 +6,7 @@ import {
   FiUser,
 } from "react-icons/fi";
 import Prompt from "../Prompt";
+import GeneratedWallpaper from "../Chatbot/GeneratedWallpaper";
 import {
   Brand,
   BrandMark,
@@ -37,6 +38,13 @@ export default function TelaCheia({
   message = "",
   onChange,
   onSubmit,
+  onFavorite,
+  onEdit,
+  onSelectHistory,
+  favoritePendingId,
+  generationHistory = [],
+  user,
+  editTarget,
 }) {
   return (
     <Screen aria-label="Tela cheia do gerador de wallpapers">
@@ -51,16 +59,23 @@ export default function TelaCheia({
       </Rail>
 
       <ChatSidebar>
-        <Brand>LogoMarca</Brand>
+        <Brand>WA1PAPER</Brand>
         <NewChatButton type="button" onClick={onNewChat}>
           <FiPlus /> Novo chat
         </NewChatButton>
         <SidebarSection>
-          <SidebarLabel>HISTÓRICO</SidebarLabel>
-          <SidebarSelection type="button" aria-current="page">
-            <FiMessageSquare />
-            <span>Conversa atual</span>
-          </SidebarSelection>
+          <SidebarLabel>HISTÓRICO DE GERAÇÕES</SidebarLabel>
+          {generationHistory.length > 0 ? generationHistory.slice(0, 12).map((generation) => (
+            <SidebarSelection
+              key={generation.id}
+              type="button"
+              title={generation.prompt}
+              onClick={() => onSelectHistory(generation)}
+            >
+              <FiMessageSquare />
+              <span>{generation.title || generation.prompt}</span>
+            </SidebarSelection>
+          )) : <p>Nenhuma geração anterior.</p>}
         </SidebarSection>
         <SidebarSection>
           <SidebarLabel>PROJETOS</SidebarLabel>
@@ -81,7 +96,7 @@ export default function TelaCheia({
               <FiArrowLeft />
             </button>
             <HeaderUser>
-              <span>LogoMarca</span>
+              <span>{user?.name || "WA1PAPER"}</span>
               <ProfileAvatar aria-label="Perfil">
                 <FiUser />
               </ProfileAvatar>
@@ -91,10 +106,17 @@ export default function TelaCheia({
 
         <ChatPanel>
           <Conversation aria-live="polite">
-            {conversation.map(({ id, text, image, fromUser }) => (
+            {conversation.map(({ id, text, wallpaper, fromUser }) => (
               <ChatMessage key={id} $fromUser={fromUser}>
                 <MessageText>{text}</MessageText>
-                {image && <img src={image} alt="Wallpaper gerado por IA" />}
+                {wallpaper && (
+                  <GeneratedWallpaper
+                    wallpaper={wallpaper}
+                    onFavorite={onFavorite}
+                    onEdit={onEdit}
+                    favoritePending={favoritePendingId === wallpaper.id}
+                  />
+                )}
               </ChatMessage>
             ))}
             {isGenerating && (
@@ -108,7 +130,8 @@ export default function TelaCheia({
             value={message}
             onChange={onChange}
             onSubmit={onSubmit}
-            placeholder="Descreva o wallpaper que você imagina..."
+            disabled={isGenerating}
+            placeholder={editTarget ? "Descreva o que deseja editar..." : undefined}
           />
           <Notice>Nosso site pode cometer erros enquanto está em crescimento.</Notice>
         </ChatPanel>

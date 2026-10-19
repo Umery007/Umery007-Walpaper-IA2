@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Sparkles, Star } from "lucide-react";
-import { apiRequest } from "../../services/api";
+import { apiRequest, isProtectedWallpaperImage } from "../../services/api";
 import * as S from "./styles";
 
 /**
@@ -152,7 +152,12 @@ export default function SeletorWallpapers({ selecionados, onChange }) {
                     aria-label={`${marcado ? "Remover" : "Adicionar"} ${wallpaper.title}`}
                     onClick={() => alternar(wallpaper)}
                   >
-                    <img src={wallpaper.image_url} alt="" loading="lazy" />
+                    <img
+                      src={wallpaper.image_url}
+                      alt=""
+                      loading="lazy"
+                      crossOrigin={isProtectedWallpaperImage(wallpaper.image_url) ? "use-credentials" : undefined}
+                    />
                     {marcado && (
                       <S.Selo aria-hidden="true">
                         <Check size={14} strokeWidth={3} />

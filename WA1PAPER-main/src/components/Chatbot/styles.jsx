@@ -88,6 +88,13 @@ export const ChatWindow = styled.section`
   border: 1px solid ${glassBorder};
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(18px);
+
+  @media (max-width: 520px) {
+    inset: auto 10px 10px;
+    width: auto;
+    height: min(72dvh, 620px);
+    border-radius: 22px;
+  }
 `;
 
 export const Header = styled.header`
@@ -248,6 +255,54 @@ export const Message = styled.div`
     border-left: 1px solid ${glassBorder};
     background: rgba(255, 255, 255, 0.12);
     transform: skewX(-28deg) rotate(22deg);
+  }
+`;
+
+export const GeneratedResult = styled.div`
+  display: grid;
+  gap: 10px;
+  width: min(100%, 440px);
+  margin-top: 12px;
+`;
+
+export const GeneratedImage = styled.img`
+  display: block;
+  width: 100%;
+  max-height: min(42vh, 480px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  object-fit: contain;
+  background: #111115;
+`;
+
+export const ResultActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+export const ResultAction = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid ${glassBorder};
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: 600 12px "Roboto Slab", serif;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: wait;
   }
 `;
 

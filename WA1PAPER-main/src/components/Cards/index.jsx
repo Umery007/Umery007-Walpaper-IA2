@@ -31,7 +31,7 @@ import {
 } from "./styles";
 
 import { readSavedWallpaperFolders, writeSavedWallpaperFolders } from "../../utils/savedWallpapers";
-import { apiRequest, buildQuery } from "../../services/api";
+import { apiRequest, buildQuery, isProtectedWallpaperImage } from "../../services/api";
 import useAuth from "../../contexts/useAuth";
 
 /**
@@ -81,11 +81,14 @@ export function Card({
   const [newFolderName, setNewFolderName] = useState("");
   const [folderError, setFolderError] = useState("");
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isFavorited = onLikeToggle ? Boolean(liked) : isLiked;
 
   async function openSaveDialog() {
     try {
-      const savedFolders = readSavedWallpaperFolders().filter((folder) => folder.visibility !== "public");
+      const savedFolders = user
+        ? (await apiRequest("/folders")).folders.filter((folder) => folder.visibility !== "public")
+        : readSavedWallpaperFolders().filter((folder) => folder.visibility !== "public");
       setFolders(savedFolders);
       setSelectedFolder(savedFolders[0]?.id ?? "");
       setFolderError("");
@@ -127,7 +130,7 @@ export function Card({
     setIsLikePending(true);
     try {
       if (onLikeToggle) {
-        await onLikeToggle(id, isLiked);
+        await onLikeToggle(id, isFavorited);
       } else {
         setIsLiked((value) => !value);
       }
@@ -150,7 +153,7 @@ export function Card({
 
   function persistFolders(nextFolders) {
     try {
-      writeSavedWallpaperFolders(nextFolders);
+      writeSavedWallpaperFolders(nextFolders, user?.id);
       setFolders(nextFolders);
       setFolderError("");
       return true;
@@ -160,7 +163,7 @@ export function Card({
     }
   }
 
-  function createFolder(event) {
+  async function createFolder(event) {
     event.preventDefault();
     const name = newFolderName.trim();
     if (!name) {
@@ -168,36 +171,68 @@ export function Card({
       return;
     }
 
-    const folder = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name,
-      items: [],
-    };
-    if (persistFolders([...folders, folder])) {
+    try {
+      let folder;
+      if (user) {
+        ({ folder } = await apiRequest("/folders", {
+          method: "POST",
+          body: JSON.stringify({ name, visibility: "private" }),
+        }));
+        setFolders((current) => [...current, folder]);
+      } else {
+        folder = { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name, items: [] };
+        if (!persistFolders([...folders, folder])) return;
+      }
       setSelectedFolder(folder.id);
       setNewFolderName("");
+      setFolderError("");
+    } catch (error) {
+      setFolderError(error.message || "Não foi possível criar a pasta.");
     }
   }
 
-  function saveToFolder() {
+  async function saveToFolder() {
     if (!selectedFolder) {
       setFolderError("Crie ou selecione uma pasta para continuar.");
       return;
     }
 
-    const itemId = String(id ?? image);
-    const nextFolders = folders.map((folder) => (
-      folder.id === selectedFolder
-        ? {
-          ...folder,
-          items: folder.items.some((item) => item.id === itemId)
-            ? folder.items
-            : [...folder.items, { id: itemId, image, title: tags.join(" · ") || "Wallpaper", tags }],
-        }
-        : folder
-    ));
-
-    if (persistFolders(nextFolders)) setIsSaveDialogOpen(false);
+    try {
+      if (user) {
+        if (!id) throw new Error("Este wallpaper ainda nao esta salvo e nao pode ser adicionado a uma pasta.");
+        await apiRequest(`/folders/${encodeURIComponent(selectedFolder)}/items`, {
+          method: "POST",
+          body: JSON.stringify({ wallpaper_id: id }),
+        });
+        setFolders((current) => current.map((folder) => (
+          folder.id === selectedFolder
+            ? {
+              ...folder,
+              items: folder.items.some((item) => item.id === id)
+                ? folder.items
+                : [...folder.items, { id, image, title, tags }],
+            }
+            : folder
+        )));
+      } else {
+        const itemId = String(id ?? image);
+        const nextFolders = folders.map((folder) => (
+          folder.id === selectedFolder
+            ? {
+              ...folder,
+              items: folder.items.some((item) => item.id === itemId)
+                ? folder.items
+                : [...folder.items, { id: itemId, image, title: tags.join(" · ") || "Wallpaper", tags }],
+            }
+            : folder
+        ));
+        if (!persistFolders(nextFolders)) return;
+      }
+      setFolderError("");
+      setIsSaveDialogOpen(false);
+    } catch (error) {
+      setFolderError(error.message || "Não foi possível salvar o wallpaper na pasta.");
+    }
   }
 
   return (
@@ -209,7 +244,11 @@ export function Card({
       onKeyDown={handleCardKeyDown}
     >
       <ImageWrapper>
-        <Image src={image} alt={tags.join(", ") || "Wallpaper"} />
+        <Image
+          src={image}
+          alt={tags.join(", ") || "Wallpaper"}
+          crossOrigin={isProtectedWallpaperImage(image) ? "use-credentials" : undefined}
+        />
 
         <TopBar>
           <TagList>

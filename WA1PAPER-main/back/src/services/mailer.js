@@ -36,3 +36,21 @@ export async function sendPasswordResetEmail(user, token) {
   });
   return link;
 }
+
+export async function sendEmailVerification(user, token) {
+  const link = `${env.frontendUrl}/verificar-email?token=${encodeURIComponent(token)}`;
+  await sendMail({
+    to: user.email,
+    subject: "Confirme seu e-mail - WA1PAPER",
+    text: [
+      `Ola, ${user.name}!`,
+      "",
+      "Confirme o endereco de e-mail da sua conta WA1PAPER pelo link abaixo (vale por 1 hora):",
+      "",
+      link,
+      "",
+      "Se voce nao criou esta conta, ignore esta mensagem.",
+    ].join("\n"),
+  });
+  return link;
+}

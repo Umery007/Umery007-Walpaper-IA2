@@ -1,7 +1,9 @@
-const STORAGE_KEY = "wa1paper-saved-wallpaper-folders";
+function storageKey(ownerId) {
+  return `wa1paper-saved-wallpaper-folders:${ownerId ?? "guest"}`;
+}
 
-export function readSavedWallpaperFolders() {
-  const saved = window.localStorage.getItem(STORAGE_KEY);
+export function readSavedWallpaperFolders(ownerId = null) {
+  const saved = window.localStorage.getItem(storageKey(ownerId));
   if (!saved) return [];
 
   const folders = JSON.parse(saved);
@@ -20,7 +22,7 @@ export function readSavedWallpaperFolders() {
   return folders;
 }
 
-export function writeSavedWallpaperFolders(folders) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(folders));
-  window.dispatchEvent(new Event("wa1paper-saved-folders-updated"));
+export function writeSavedWallpaperFolders(folders, ownerId = null) {
+  window.localStorage.setItem(storageKey(ownerId), JSON.stringify(folders));
+  window.dispatchEvent(new CustomEvent("wa1paper-saved-folders-updated", { detail: { ownerId } }));
 }

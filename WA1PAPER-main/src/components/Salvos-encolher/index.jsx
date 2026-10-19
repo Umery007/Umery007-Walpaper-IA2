@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import * as S from './styles';
+import { isProtectedWallpaperImage } from '../../services/api';
 
 const imagensDemo = Array.from({ length: 36 }, (_, index) => ({
   id: index + 1,
@@ -25,7 +26,11 @@ export function GridCard({ image, onToggleLike, index, onOpenPin }) {
         }
       }}
     >
-      <S.ImagemSalva src={image.url} alt={image.alt} />
+      <S.ImagemSalva
+        src={image.url}
+        alt={image.alt}
+        crossOrigin={isProtectedWallpaperImage(image.url) ? 'use-credentials' : undefined}
+      />
       <S.BotaoCurtir
         type="button"
         aria-label={image.isLiked ? 'Descurtir wallpaper' : 'Curtir wallpaper'}

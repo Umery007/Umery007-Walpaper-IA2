@@ -11,6 +11,7 @@ import {
 } from "react-icons/fi";
 
 import wallpaper from "../../assets/img-cards/paper.jpeg";
+import useAuth from "../../contexts/useAuth";
 import {
   Overlay,
   Panel,
@@ -64,10 +65,11 @@ const contacts = [
   { id: "nina", name: "Nina Luz", handle: "@ninaluz", color: "#b9b0de" },
 ];
 
-const WALLPAPER_STORAGE_KEY = "wa1paper-message-wallpapers";
 const MAX_WALLPAPER_SIZE = 512 * 1024;
 
 export default function Mensagens({ onClose }) {
+  const { user } = useAuth();
+  const wallpaperStorageKey = `wa1paper-message-wallpapers:${user?.id ?? "guest"}`;
   const [view, setView] = useState("inbox");
   const [previousView, setPreviousView] = useState("inbox");
   const [activeContact, setActiveContact] = useState(null);
@@ -81,8 +83,13 @@ export default function Mensagens({ onClose }) {
   const [wallpaperError, setWallpaperError] = useState("");
 
   useEffect(() => {
+    setMessagesByContact({});
+    setView("inbox");
+    setActiveContact(null);
+    setWallpapers({ all: "", byContact: {} });
+    setWallpaperError("");
     try {
-      const saved = window.localStorage.getItem(WALLPAPER_STORAGE_KEY);
+      const saved = window.localStorage.getItem(wallpaperStorageKey);
       if (!saved) return;
 
       const parsed = JSON.parse(saved);
@@ -112,7 +119,7 @@ export default function Mensagens({ onClose }) {
     } catch {
       setWallpaperError("Não foi possível carregar os papéis de parede salvos.");
     }
-  }, []);
+  }, [wallpaperStorageKey]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -212,7 +219,7 @@ export default function Mensagens({ onClose }) {
 
   function saveWallpapers(nextWallpapers) {
     try {
-      window.localStorage.setItem(WALLPAPER_STORAGE_KEY, JSON.stringify(nextWallpapers));
+      window.localStorage.setItem(wallpaperStorageKey, JSON.stringify(nextWallpapers));
       setWallpapers(nextWallpapers);
       setWallpaperError("");
       return true;

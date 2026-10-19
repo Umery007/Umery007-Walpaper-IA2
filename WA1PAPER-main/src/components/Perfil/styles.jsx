@@ -174,6 +174,47 @@ export const NomeUsuario = styled.h1`
   text-overflow: ellipsis;
 `;
 
+export const SeloPremium = styled.span`
+  display: inline-flex;
+  align-items: center;
+  margin-left: 9px;
+  padding: 3px 8px;
+  border: 1px solid rgba(245, 199, 89, 0.45);
+  border-radius: 999px;
+  background: rgba(245, 199, 89, 0.12);
+  color: #f5d27a;
+  font-size: 0.65rem;
+  font-weight: 700;
+  vertical-align: middle;
+`;
+
+export const VerificacaoEmail = styled.div`
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-top: 10px;
+  color: #ffd48a;
+  font-size: 0.75rem;
+
+  button {
+    padding: 5px 9px;
+    border: 1px solid rgba(255, 212, 138, 0.35);
+    border-radius: 8px;
+    background: rgba(255, 212, 138, 0.1);
+    color: inherit;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  small {
+    color: #fff;
+  }
+`;
+
 export const NomeUsuarioHandle = styled.p`
   margin: 0.2rem 0 0;
   color: #c4c6d0;

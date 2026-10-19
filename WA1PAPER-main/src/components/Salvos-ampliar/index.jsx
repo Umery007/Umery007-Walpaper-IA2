@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import imagemPaper from '../../assets/img-cards/paper.jpeg';
 import * as S from './styles';
+import { isProtectedWallpaperImage } from '../../services/api';
 
 const imagensDemo = Array.from({ length: 60 }, (_, index) => ({
 	id: index + 1,
@@ -28,6 +29,7 @@ export function GridCard({ image, index, onOpenPin }) {
 			<S.ImagemSalva
 				src={image.url}
 				alt={image.alt}
+				crossOrigin={isProtectedWallpaperImage(image.url) ? 'use-credentials' : undefined}
 				$proporcao={image.proporcao}
 				$invertida={image.invertida}
 			/>

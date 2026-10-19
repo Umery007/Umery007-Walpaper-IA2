@@ -18,6 +18,7 @@ import PublicarWallpaper from "./components/PublicarWallpaper";
 import PasswordRecovery from "./components/PasswordRecovery";
 import Chatbot from "./components/Chatbot";
 import AlterarSenha from "./components/Alterarsenha";
+import VerificarEmail from "./components/VerificarEmail";
 
 function Router() {
   return (
@@ -44,6 +45,7 @@ function Router() {
         <Route path="/wallpapers/novo" element={<PublicarWallpaper />} />
         <Route path="/esqueci-senha" element={<PasswordRecovery />} />
         <Route path="/resetar-senha" element={<PasswordRecovery reset />} />
+        <Route path="/verificar-email" element={<VerificarEmail />} />
       </Routes>
       <Chatbot />
     </BrowserRouter>

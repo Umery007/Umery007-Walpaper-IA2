@@ -12,11 +12,14 @@ function absoluteImageUrl(imageUrl) {
 
 /** Converte a linha do banco no formato que os componentes React esperam. */
 export function serializeWallpaper(row) {
+  const imageUrl = row.image_url.startsWith("/uploads/wallpapers/")
+    ? `${env.publicUrl}/api/wallpapers/${row.id}/image`
+    : absoluteImageUrl(row.image_url);
   return {
     id: row.id,
     title: row.title,
     description: row.description,
-    image_url: absoluteImageUrl(row.image_url),
+    image_url: imageUrl,
     category: row.category,
     tags: row.tags ?? [],
     source: row.source,
@@ -87,7 +90,11 @@ export async function listWallpapers({ viewerId = null, search = "", category = 
 }
 
 export async function getWallpaperById(id, viewerId = null) {
-  const { rows } = await query(`${BASE_SELECT} WHERE w.id = $2`, [viewerId, id]);
+  const { rows } = await query(
+    `${BASE_SELECT}
+     WHERE w.id = $2 AND (w.is_public = TRUE OR w.user_id = $1)`,
+    [viewerId, id],
+  );
   return rows[0] ? serializeWallpaper(rows[0]) : null;
 }
 

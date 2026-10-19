@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name           TEXT        NOT NULL,
   email          CITEXT      NOT NULL UNIQUE,
+  email_verified BOOLEAN     NOT NULL DEFAULT FALSE,
   username       CITEXT      UNIQUE,
   password_hash  TEXT        NOT NULL,
   avatar_url     TEXT,
@@ -21,6 +22,16 @@ CREATE TABLE IF NOT EXISTS users (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash  TEXT        NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications(user_id);
 
 -- Recuperacao de senha ------------------------------------------------
 -- Guardamos apenas o hash do token; o valor original so vai para o e-mail.
@@ -65,6 +76,28 @@ CREATE TABLE IF NOT EXISTS favorites (
   PRIMARY KEY (user_id, wallpaper_id)
 );
 CREATE INDEX IF NOT EXISTS favorites_user_idx ON favorites(user_id, created_at DESC);
+
+-- Pastas individuais --------------------------------------------------
+CREATE TABLE IF NOT EXISTS wallpaper_folders (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        TEXT        NOT NULL,
+  visibility  TEXT        NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'public')),
+  cover_image TEXT        NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, name)
+);
+CREATE INDEX IF NOT EXISTS wallpaper_folders_user_idx ON wallpaper_folders(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS wallpaper_folders_public_idx ON wallpaper_folders(visibility, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS wallpaper_folder_items (
+  folder_id   UUID        NOT NULL REFERENCES wallpaper_folders(id) ON DELETE CASCADE,
+  wallpaper_id UUID       NOT NULL REFERENCES wallpapers(id) ON DELETE CASCADE,
+  position    INTEGER     NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (folder_id, wallpaper_id)
+);
+CREATE INDEX IF NOT EXISTS wallpaper_folder_items_wallpaper_idx ON wallpaper_folder_items(wallpaper_id);
 
 -- Seguidores -----------------------------------------------------------
 -- follower_id segue following_id. A chave primaria dupla ja impede seguir

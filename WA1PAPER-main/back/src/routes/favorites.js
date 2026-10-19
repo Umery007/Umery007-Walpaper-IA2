@@ -14,8 +14,12 @@ router.get("/", asyncHandler(async (req, res) => {
 }));
 
 router.post("/:wallpaperId", asyncHandler(async (req, res) => {
-  const { rowCount } = await query("SELECT 1 FROM wallpapers WHERE id = $1", [req.params.wallpaperId]);
-  if (!rowCount) throw notFound("Este wallpaper nao existe ou foi removido.");
+  const wallpaper = await query(
+    `SELECT 1 FROM wallpapers
+     WHERE id = $1 AND (is_public = TRUE OR user_id = $2)`,
+    [req.params.wallpaperId, req.user.id],
+  );
+  if (!wallpaper.rowCount) throw notFound("Este wallpaper nao existe ou foi removido.");
 
   await query(
     `INSERT INTO favorites (user_id, wallpaper_id) VALUES ($1, $2)

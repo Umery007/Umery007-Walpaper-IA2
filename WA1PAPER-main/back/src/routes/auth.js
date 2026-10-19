@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { query, transaction } from "../db/pool.js";
 import { DEFAULT_PLAN } from "../config/plans.js";
-import { optionalAuth, publicUser, requireAuth, USER_COLUMNS } from "../middleware/auth.js";
+import { applyExclusivePremium, optionalAuth, publicUser, requireAuth, USER_COLUMNS } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import {
   clearSessionCookie,
@@ -12,7 +12,7 @@ import {
   setSessionCookie,
   signSessionToken,
 } from "../services/tokens.js";
-import { sendPasswordResetEmail } from "../services/mailer.js";
+import { sendEmailVerification, sendPasswordResetEmail } from "../services/mailer.js";
 import { asyncHandler, badRequest, conflict, unauthorized } from "../utils/http.js";
 import { parseBody } from "../utils/validate.js";
 
@@ -60,7 +60,15 @@ router.post("/register", authLimiter, asyncHandler(async (req, res) => {
     [name, email, passwordHash, DEFAULT_PLAN],
   );
 
-  const user = rows[0];
+  const user = await applyExclusivePremium(rows[0]);
+  const verification = createResetToken();
+  await query("DELETE FROM email_verifications WHERE user_id = $1", [user.id]);
+  await query(
+    `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '1 hour')`,
+    [user.id, verification.tokenHash],
+  );
+  await sendEmailVerification(user, verification.token);
   setSessionCookie(res, signSessionToken(user));
   res.status(201).json({ user: publicUser(user) });
 }));
@@ -82,14 +90,62 @@ router.post("/login", authLimiter, asyncHandler(async (req, res) => {
     throw unauthorized("E-mail ou senha incorretos.");
   }
 
-  setSessionCookie(res, signSessionToken(row));
-  res.json({ user: publicUser(row) });
+  const user = await applyExclusivePremium(row);
+  setSessionCookie(res, signSessionToken(user));
+  res.json({ user: publicUser(user) });
 }));
 
 router.post("/logout", (_req, res) => {
   clearSessionCookie(res);
   res.json({ message: "Sessao encerrada." });
 });
+
+const verifyEmailSchema = z.object({
+  token: z.string().trim().min(10, "O link de verificacao e invalido."),
+});
+
+router.post("/verify-email", authLimiter, asyncHandler(async (req, res) => {
+  const { token } = parseBody(verifyEmailSchema, req.body);
+  const tokenHash = hashResetToken(token);
+
+  const user = await transaction(async (client) => {
+    const { rows } = await client.query(
+      `SELECT ev.id, ev.user_id
+       FROM email_verifications ev
+       WHERE ev.token_hash = $1 AND ev.expires_at > now()
+       FOR UPDATE`,
+      [tokenHash],
+    );
+    const verification = rows[0];
+    if (!verification) throw badRequest("Este link de verificacao expirou ou ja foi usado.");
+
+    await client.query("UPDATE users SET email_verified = TRUE WHERE id = $1", [verification.user_id]);
+    await client.query("DELETE FROM email_verifications WHERE user_id = $1", [verification.user_id]);
+    const result = await client.query(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [verification.user_id]);
+    return result.rows[0];
+  });
+
+  const updatedUser = await applyExclusivePremium(user);
+  setSessionCookie(res, signSessionToken(updatedUser));
+  res.json({ user: publicUser(updatedUser) });
+}));
+
+router.post("/verify-email/resend", authLimiter, requireAuth, asyncHandler(async (req, res) => {
+  if (req.user.email_verified) {
+    res.json({ message: "Este e-mail ja foi confirmado." });
+    return;
+  }
+
+  const verification = createResetToken();
+  await query("DELETE FROM email_verifications WHERE user_id = $1", [req.user.id]);
+  await query(
+    `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + interval '1 hour')`,
+    [req.user.id, verification.tokenHash],
+  );
+  await sendEmailVerification(req.user, verification.token);
+  res.json({ message: "Enviamos um novo link de verificacao para seu e-mail." });
+}));
 
 /** Usado pelo frontend ao carregar a pagina para restaurar a sessao. */
 router.get("/me", optionalAuth, (req, res) => {
